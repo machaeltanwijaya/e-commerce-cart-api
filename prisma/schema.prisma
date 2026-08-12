@@ -1,0 +1,251 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  CUSTOMER
+  ADMIN
+}
+
+enum OrderStatus {
+  CREATED
+  PAID
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+enum TransactionStatus {
+  INITIATED
+  PROCESSING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+  EXPIRED
+}
+
+// fix: enum ini belum ada padahal dipakai di Transaction.method
+enum TransactionMethod {
+  BANK_TRANSFER
+  CREDIT_CARD
+  E_WALLET
+  VIRTUAL_ACCOUNT
+  COD
+}
+
+enum DiscountType {
+  PERCENTAGE
+  FIXED
+}
+
+model User {
+  id        String   @id @default(uuid())
+  name      String
+  email     String   @unique
+  password  String
+  role      Role     @default(CUSTOMER)
+
+  // baru: avatar — reuse pola Multer + Sharp + Cloudinary dari project File Upload
+  avatarUrl      String?
+  avatarPublicId String?
+
+  createdAt DateTime @default(now())
+
+  cart      Cart?
+  orders    Order[]
+  addresses Address[]
+  reviews   Review[]
+  wishlist  Wishlist[]
+}
+
+model Category {
+  id          String    @id @default(uuid())
+  name        String
+  slug        String    @unique
+  description String?
+
+  // baru: opsional, buat banner/icon kategori
+  imageUrl    String?
+  imagePublicId  String?
+
+  products    Product[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Product {
+  id            String  @id @default(uuid())
+  name          String
+  description   String
+  price         Decimal @db.Decimal(10, 2)
+  stock         Int     @default(0)
+  imageUrl      String?
+  imagePublicId String?
+  isActive      Boolean @default(true)
+
+  category      Category @relation(fields: [categoryId], references: [id])
+  categoryId    String
+
+  cartItems     CartItem[]
+  orderItems    OrderItem[]
+  reviews       Review[]
+  wishlist      Wishlist[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([categoryId])
+  @@index([isActive])
+}
+
+model Cart {
+  id     String @id @default(uuid())
+  user   User   @relation(fields: [userId], references: [id])
+  userId String @unique
+
+  items  CartItem[]
+}
+
+model CartItem {
+  id        String  @id @default(uuid())
+  cart      Cart    @relation(fields: [cartId], references: [id])
+  cartId    String
+  product   Product @relation(fields: [productId], references: [id])
+  productId String
+  quantity  Int     @default(1)
+
+  @@unique([cartId, productId])
+  @@index([productId]) // baru: percepat query "produk ini ada di cart siapa saja"
+}
+
+model Order {
+  id            String        @id @default(uuid())
+  user          User          @relation(fields: [userId], references: [id])
+  userId        String
+
+  address       Address?      @relation(fields: [addressId], references: [id])
+  addressId     String?
+
+  coupon        Coupon?       @relation(fields: [couponId], references: [code])
+  couponId      String?
+
+  totalPrice    Decimal       @db.Decimal(10, 2)
+  status        OrderStatus   @default(CREATED)
+  paymentStatus PaymentStatus @default(PENDING)
+
+  items         OrderItem[]
+  history       OrderHistory[]
+  transaction   Transaction?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([status])
+}
+
+model OrderItem {
+  id           String  @id @default(uuid())
+  order        Order   @relation(fields: [orderId], references: [id])
+  orderId      String
+  product      Product @relation(fields: [productId], references: [id])
+  productId    String
+
+  quantity     Int
+  productName  String
+  productPrice Decimal @db.Decimal(10, 2)
+  subtotal     Decimal @db.Decimal(10, 2)
+
+  @@index([productId]) // baru: query "produk ini pernah dibeli berapa kali"
+}
+
+model Address {
+  id         String @id @default(uuid())
+  user       User   @relation(fields: [userId], references: [id])
+  userId     String
+
+  label      String
+  recipient  String
+  phone      String
+  street     String
+  city       String
+  province   String
+  postalCode String
+
+  orders     Order[]
+
+  @@index([userId]) // baru: query "semua alamat milik user ini"
+}
+
+model Coupon {
+  code         String       @id
+  discountType DiscountType
+  value        Decimal      @db.Decimal(10, 2)
+  expiryDate   DateTime
+  usageLimit   Int?
+  isActive     Boolean      @default(true) // fix: tambah default
+
+  orders       Order[]
+}
+
+model Review {
+  id        String  @id @default(uuid())
+  user      User    @relation(fields: [userId], references: [id])
+  userId    String
+  product   Product @relation(fields: [productId], references: [id])
+  productId String
+
+  rating    Int
+  comment   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, productId])
+  @@index([productId]) // baru: query "semua review untuk produk ini"
+}
+
+model Wishlist {
+  id        String  @id @default(uuid())
+  user      User    @relation(fields: [userId], references: [id])
+  userId    String
+  product   Product @relation(fields: [productId], references: [id])
+  productId String
+
+  @@unique([userId, productId])
+  @@index([productId])
+}
+
+model Transaction {
+  id      String            @id @default(uuid())
+  order   Order             @relation(fields: [orderId], references: [id])
+  orderId String            @unique
+
+  amount    Decimal           @db.Decimal(10, 2)
+  method    TransactionMethod
+  status    TransactionStatus
+  createdAt DateTime          @default(now())
+}
+
+model OrderHistory {
+  id             String      @id @default(uuid())
+  order          Order       @relation(fields: [orderId], references: [id])
+  orderId        String
+
+  previousStatus OrderStatus
+  newStatus      OrderStatus
+  changedBy      String
+  createdAt      DateTime    @default(now())
+}
