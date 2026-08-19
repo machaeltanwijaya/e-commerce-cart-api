@@ -13,9 +13,10 @@ const createCategory = async (req, res, next) => {
 
 const getAllCategories = async (req, res, next) => {
     try {
-        const result = await categoryService.getAll();
+        const result = await categoryService.getAll(req.query);
         res.status(200).json({
-            data: result
+            data: result.categories,
+            pagination: result.pagination
         });
     } catch (e) {
         next(e);

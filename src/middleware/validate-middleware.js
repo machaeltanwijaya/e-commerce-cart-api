@@ -17,6 +17,7 @@ export const validate = (schema, property = "body") => {
 
         if (property === "query") {
             Object.keys(req.query).forEach((key) => delete req.query[key]);
+            Object.assign(req.query, value);
         } else {
             req[property] = value;
         }

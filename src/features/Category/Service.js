@@ -36,16 +36,53 @@ const create = async (request, file) => {
 	});
 }
 
-const getAll = async () => {
-	return await prisma.category.findMany({
-		orderBy: { createdAt: "desc" },
-		include: {
-			_count: {
-				select: { products: true}
+const getAll = async (query = {}) => {
+	const page = Math.max(1, parseInt(query.page) || 1);
+	const limit = Math.max(1, parseInt(query.limit || query.size) || 10);
+	const skip = (page - 1) * limit;
+
+	const search = query.search || query.name;
+	const where = search
+		? {
+				OR: [
+					{ name: { contains: search, mode: "insensitive" } },
+					{ description: { contains: search, mode: "insensitive" } }
+				]
+		  }
+		: {};
+
+	const sortBy = query.sortBy || "createdAt";
+	const sortOrder = query.sortOrder || "desc";
+
+	const [categories, totalItems] = await Promise.all([
+		prisma.category.findMany({
+			where,
+			skip,
+			take: limit,
+			orderBy: { [sortBy]: sortOrder },
+			include: {
+				_count: {
+					select: { products: true }
+				}
 			}
+		}),
+		prisma.category.count({ where })
+	]);
+
+	const totalPages = Math.ceil(totalItems / limit);
+
+	return {
+		categories,
+		pagination: {
+			totalItems,
+			totalPages,
+			currentPage: page,
+			limit,
+			hasNextPage: page < totalPages,
+			hasPrevPage: page > 1
 		}
-	});
-}
+	};
+};
 
 const getById = async (id) => {
 	const category = await prisma.category.findUnique({
